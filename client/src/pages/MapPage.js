@@ -5,8 +5,8 @@ import L from 'leaflet';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
-// Default center: San Francisco
-const DEFAULT_CENTER = [37.7749, -122.4194];
+// Default center: Southwest Florida (Fort Myers)
+const DEFAULT_CENTER = [26.6406, -81.8723];
 const DEFAULT_ZOOM = 14;
 
 function createScooterIcon(battery) {

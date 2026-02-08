@@ -5,9 +5,9 @@ const bcrypt = require('bcryptjs');
 const db = require('./database');
 const { randomPointInRadius } = require('./utils/geo');
 
-// San Francisco downtown as center
-const CENTER_LAT = 37.7749;
-const CENTER_LNG = -122.4194;
+// Southwest Florida (Fort Myers) as center
+const CENTER_LAT = 26.6406;
+const CENTER_LNG = -81.8723;
 
 console.log('Seeding Vim Scooter database...');
 
@@ -41,26 +41,39 @@ for (const user of users) {
   `).run(id, user.email, bcrypt.hashSync('password123', 10), user.name, user.phone, 25.00);
 }
 
-// Create scooters scattered around SF
+// Create scooters scattered across Southwest Florida cities
 const scooterModels = ['Vim S1', 'Vim S2', 'Vim Pro', 'Vim Max'];
 const scooterStatuses = ['available', 'available', 'available', 'available', 'available', 'available', 'available', 'maintenance', 'low_battery'];
 const scooters = [];
 
-for (let i = 1; i <= 50; i++) {
-  const id = uuidv4();
-  const code = `VIM-${String(i).padStart(4, '0')}`;
-  const model = scooterModels[Math.floor(Math.random() * scooterModels.length)];
-  const status = scooterStatuses[Math.floor(Math.random() * scooterStatuses.length)];
-  const battery = status === 'low_battery' ? Math.floor(Math.random() * 10) + 1 : Math.floor(Math.random() * 60) + 40;
-  const { latitude, longitude } = randomPointInRadius(CENTER_LAT, CENTER_LNG, 3000);
-  const totalRides = Math.floor(Math.random() * 200);
-  const totalDistance = totalRides * (Math.random() * 3000 + 500);
+// Distribute scooters across multiple SW Florida hubs
+const scooterHubs = [
+  { name: 'Fort Myers',   lat: 26.6406, lng: -81.8723, count: 18, radius: 2500 },
+  { name: 'Naples',       lat: 26.1420, lng: -81.7948, count: 15, radius: 2000 },
+  { name: 'Cape Coral',   lat: 26.5629, lng: -81.9495, count: 8,  radius: 2000 },
+  { name: 'Punta Gorda',  lat: 26.9298, lng: -82.0454, count: 5,  radius: 1500 },
+  { name: 'Fort Myers Beach', lat: 26.4520, lng: -81.9495, count: 4, radius: 1000 },
+];
 
-  scooters.push(id);
-  db.prepare(`
-    INSERT INTO scooters (id, code, model, status, battery_level, latitude, longitude, total_rides, total_distance, price_per_minute)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, code, model, status, battery, latitude, longitude, totalRides, totalDistance, model === 'Vim Pro' ? 0.49 : model === 'Vim Max' ? 0.59 : 0.39);
+let scooterIndex = 1;
+for (const hub of scooterHubs) {
+  for (let i = 0; i < hub.count; i++) {
+    const id = uuidv4();
+    const code = `VIM-${String(scooterIndex).padStart(4, '0')}`;
+    const model = scooterModels[Math.floor(Math.random() * scooterModels.length)];
+    const status = scooterStatuses[Math.floor(Math.random() * scooterStatuses.length)];
+    const battery = status === 'low_battery' ? Math.floor(Math.random() * 10) + 1 : Math.floor(Math.random() * 60) + 40;
+    const { latitude, longitude } = randomPointInRadius(hub.lat, hub.lng, hub.radius);
+    const totalRides = Math.floor(Math.random() * 200);
+    const totalDistance = totalRides * (Math.random() * 3000 + 500);
+
+    scooters.push(id);
+    db.prepare(`
+      INSERT INTO scooters (id, code, model, status, battery_level, latitude, longitude, total_rides, total_distance, price_per_minute)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, code, model, status, battery, latitude, longitude, totalRides, totalDistance, model === 'Vim Pro' ? 0.49 : model === 'Vim Max' ? 0.59 : 0.39);
+    scooterIndex++;
+  }
 }
 
 // Create some completed ride history
@@ -86,13 +99,16 @@ for (let i = 0; i < 15; i++) {
     .run(uuidv4(), userId, rideId, -cost, 'ride_charge', `Ride: ${duration} min`);
 }
 
-// Create riding zones
+// Create riding zones across Southwest Florida
 const zones = [
-  { name: 'Downtown Core', type: 'riding', lat: 37.7749, lng: -122.4194, radius: 3000 },
-  { name: 'Golden Gate Park', type: 'slow', lat: 37.7694, lng: -122.4862, radius: 1500, speed_limit: 10 },
-  { name: 'Ferry Building', type: 'parking', lat: 37.7955, lng: -122.3937, radius: 200 },
-  { name: 'Union Square', type: 'parking', lat: 37.7879, lng: -122.4074, radius: 150 },
-  { name: 'Fisherman\'s Wharf', type: 'slow', lat: 37.8080, lng: -122.4177, radius: 500, speed_limit: 8 },
+  { name: 'Downtown Fort Myers', type: 'riding', lat: 26.6406, lng: -81.8723, radius: 3000 },
+  { name: 'Naples 5th Avenue', type: 'riding', lat: 26.1420, lng: -81.7948, radius: 2500 },
+  { name: 'Punta Gorda Fishermen\'s Village', type: 'parking', lat: 26.9298, lng: -82.0454, radius: 300 },
+  { name: 'Fort Myers Beach', type: 'slow', lat: 26.4520, lng: -81.9495, radius: 1500, speed_limit: 10 },
+  { name: 'Cape Coral Parkway', type: 'riding', lat: 26.5629, lng: -81.9495, radius: 2000 },
+  { name: 'Sanibel Island Causeway', type: 'slow', lat: 26.4900, lng: -82.0210, radius: 800, speed_limit: 8 },
+  { name: 'Naples Pier', type: 'parking', lat: 26.1312, lng: -81.8076, radius: 200 },
+  { name: 'Centennial Park Fort Myers', type: 'parking', lat: 26.6486, lng: -81.8705, radius: 250 },
 ];
 
 for (const zone of zones) {

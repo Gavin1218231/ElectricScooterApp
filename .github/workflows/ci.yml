@@ -1,0 +1,185 @@
+name: Vim Scooter CI/CD
+
+on:
+  push:
+    branches: [main, claude/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  server-checks:
+    name: Server - Lint & Test
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Verify database initialization
+        run: node -e "require('./server/database'); console.log('Database initialized successfully')"
+
+      - name: Seed database
+        run: npm run seed
+
+      - name: Start server and run API smoke tests
+        run: |
+          node server/index.js &
+          SERVER_PID=$!
+          sleep 3
+
+          # Health check
+          echo "Testing health endpoint..."
+          curl -sf http://localhost:3001/api/health | grep -q '"status":"ok"'
+          echo "Health check passed"
+
+          # Registration
+          echo "Testing registration..."
+          REGISTER_RESPONSE=$(curl -sf -X POST http://localhost:3001/api/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"email":"ci-test@vim.rides","password":"testpass123","name":"CI Test User"}')
+          echo "$REGISTER_RESPONSE" | grep -q '"token"'
+          echo "Registration passed"
+
+          # Login
+          echo "Testing login..."
+          LOGIN_RESPONSE=$(curl -sf -X POST http://localhost:3001/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"rider@vim.rides","password":"password123"}')
+          TOKEN=$(echo "$LOGIN_RESPONSE" | node -e "process.stdin.resume();process.stdin.on('data',d=>console.log(JSON.parse(d).token))")
+          echo "Login passed"
+
+          # Get scooters
+          echo "Testing scooters endpoint..."
+          SCOOTERS_RESPONSE=$(curl -sf http://localhost:3001/api/scooters \
+            -H "Authorization: Bearer $TOKEN")
+          echo "$SCOOTERS_RESPONSE" | grep -q '"scooters"'
+          echo "Scooters endpoint passed"
+
+          # Start ride
+          echo "Testing ride start..."
+          SCOOTER_ID=$(echo "$SCOOTERS_RESPONSE" | node -e "process.stdin.resume();process.stdin.on('data',d=>{const j=JSON.parse(d);console.log(j.scooters[0].id)})")
+          RIDE_RESPONSE=$(curl -sf -X POST http://localhost:3001/api/rides/start \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d "{\"scooter_id\":\"$SCOOTER_ID\",\"latitude\":26.6406,\"longitude\":-81.8723}")
+          RIDE_ID=$(echo "$RIDE_RESPONSE" | node -e "process.stdin.resume();process.stdin.on('data',d=>console.log(JSON.parse(d).ride.id))")
+          echo "Ride start passed"
+
+          # End ride
+          echo "Testing ride end..."
+          END_RESPONSE=$(curl -sf -X POST "http://localhost:3001/api/rides/$RIDE_ID/end" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d '{"latitude":26.6416,"longitude":-81.8713}')
+          echo "$END_RESPONSE" | grep -q '"Ride completed'
+          echo "Ride end passed"
+
+          # Admin login and dashboard
+          echo "Testing admin dashboard..."
+          ADMIN_TOKEN=$(curl -sf -X POST http://localhost:3001/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"admin@vim.rides","password":"admin123"}' | node -e "process.stdin.resume();process.stdin.on('data',d=>console.log(JSON.parse(d).token))")
+          DASHBOARD=$(curl -sf http://localhost:3001/api/admin/dashboard \
+            -H "Authorization: Bearer $ADMIN_TOKEN")
+          echo "$DASHBOARD" | grep -q '"totalScooters"'
+          echo "Admin dashboard passed"
+
+          echo ""
+          echo "All API smoke tests passed!"
+
+          kill $SERVER_PID 2>/dev/null || true
+
+  client-build:
+    name: Client - Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build React app
+        working-directory: client
+        run: npx react-scripts build
+        env:
+          CI: true
+
+      - name: Verify build output
+        run: |
+          test -f client/build/index.html
+          test -d client/build/static/js
+          echo "Build artifacts verified"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-build
+          path: client/build/
+          retention-days: 7
+
+  full-stack-integration:
+    name: Full Stack Integration
+    runs-on: ubuntu-latest
+    needs: [server-checks, client-build]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: client-build
+          path: client/build/
+
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Seed database
+        run: npm run seed
+
+      - name: Start production server and verify
+        run: |
+          PORT=3001 node server/index.js &
+          sleep 3
+
+          # Verify API serves
+          curl -sf http://localhost:3001/api/health | grep -q '"ok"'
+          echo "API serving correctly"
+
+          # Verify static frontend serves
+          curl -sf http://localhost:3001/ | grep -q 'Vim Scooters'
+          echo "Frontend serving correctly"
+
+          echo "Full stack integration test passed!"
+
+          kill %1 2>/dev/null || true

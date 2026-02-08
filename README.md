@@ -29,7 +29,7 @@ Rent, ride, and return electric scooters. A full-stack scooter-sharing platform 
 npm install
 cd client && npm install && cd ..
 
-# Seed the database with demo data (50 scooters in San Francisco)
+# Seed the database with demo data (50 scooters in Southwest Florida)
 npm run seed
 
 # Start the development server (API + React)
