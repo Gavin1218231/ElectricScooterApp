@@ -23,10 +23,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: npm
 
       - name: Install server dependencies
-        run: npm ci
+        run: npm install
 
       - name: Verify database initialization
         run: node -e "require('./server/database'); console.log('Database initialized successfully')"
@@ -114,18 +113,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
 
       - name: Install client dependencies
         working-directory: client
-        run: npm ci
+        run: npm install
 
       - name: Build React app
         working-directory: client
-        run: npx react-scripts build
-        env:
-          CI: true
+        run: npm run build
 
       - name: Verify build output
         run: |
@@ -153,7 +148,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -162,7 +156,7 @@ jobs:
           path: client/build/
 
       - name: Install server dependencies
-        run: npm ci
+        run: npm install
 
       - name: Seed database
         run: npm run seed
