@@ -1,0 +1,10 @@
+node_modules/
+client/node_modules/
+client/build/
+server/vim_scooters.db
+server/vim_scooters.db-shm
+server/vim_scooters.db-wal
+.env
+.env.local
+.DS_Store
+*.log
