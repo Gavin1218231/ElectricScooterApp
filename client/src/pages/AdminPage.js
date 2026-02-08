@@ -10,7 +10,7 @@ export default function AdminPage() {
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddScooter, setShowAddScooter] = useState(false);
-  const [newScooter, setNewScooter] = useState({ code: '', model: 'Vim S1', latitude: '37.7749', longitude: '-122.4194' });
+  const [newScooter, setNewScooter] = useState({ code: '', model: 'Vim S1', latitude: '26.6406', longitude: '-81.8723' });
   const [editingScooter, setEditingScooter] = useState(null);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function AdminPage() {
         longitude: parseFloat(newScooter.longitude),
       });
       setShowAddScooter(false);
-      setNewScooter({ code: '', model: 'Vim S1', latitude: '37.7749', longitude: '-122.4194' });
+      setNewScooter({ code: '', model: 'Vim S1', latitude: '26.6406', longitude: '-81.8723' });
       loadTab('scooters');
     } catch (err) {
       alert(err.message);
