@@ -82,6 +82,11 @@ router.post('/start', authenticate, (req, res) => {
 router.put('/:id/location', authenticate, (req, res) => {
   try {
     const { latitude, longitude } = req.body;
+
+    if (latitude == null || longitude == null) {
+      return res.status(400).json({ error: 'Latitude and longitude are required' });
+    }
+
     const ride = db.prepare(
       "SELECT * FROM rides WHERE id = ? AND user_id = ? AND status = 'active'"
     ).get(req.params.id, req.user.id);
@@ -90,12 +95,9 @@ router.put('/:id/location', authenticate, (req, res) => {
       return res.status(404).json({ error: 'Active ride not found' });
     }
 
-    // Update scooter position
-    db.prepare('UPDATE scooters SET latitude = ?, longitude = ?, updated_at = datetime(\'now\') WHERE id = ?')
-      .run(latitude, longitude, ride.scooter_id);
-
-    // Calculate distance traveled
     const scooter = db.prepare('SELECT * FROM scooters WHERE id = ?').get(ride.scooter_id);
+
+    // Calculate distance from start to current position (straight-line for display)
     const totalDistance = calculateDistance(
       ride.start_latitude, ride.start_longitude,
       latitude, longitude
@@ -109,12 +111,9 @@ router.put('/:id/location', authenticate, (req, res) => {
     // Calculate running cost
     const rideCost = ride.unlock_fee + (durationMinutes * ride.per_minute_rate);
 
-    // Simulate battery drain (~1% per 500m)
-    const batteryDrain = Math.min(Math.floor(totalDistance / 500), scooter.battery_level - 1);
-    if (batteryDrain > 0) {
-      db.prepare('UPDATE scooters SET battery_level = battery_level - ? WHERE id = ?')
-        .run(batteryDrain, ride.scooter_id);
-    }
+    // Update scooter position only (battery drain happens at ride end to avoid compounding)
+    db.prepare('UPDATE scooters SET latitude = ?, longitude = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .run(latitude, longitude, ride.scooter_id);
 
     res.json({
       ride: {
@@ -123,7 +122,7 @@ router.put('/:id/location', authenticate, (req, res) => {
         duration: durationMinutes,
         current_cost: Math.round(rideCost * 100) / 100,
       },
-      scooter: { ...scooter, latitude, longitude },
+      scooter: { ...scooter, latitude, longitude, battery_level: scooter.battery_level },
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update location' });
@@ -147,8 +146,8 @@ router.post('/:id/end', authenticate, (req, res) => {
     const endTime = Date.now();
     const durationMinutes = Math.max(1, Math.ceil((endTime - startTime) / 60000));
 
-    const endLat = latitude || ride.start_latitude;
-    const endLng = longitude || ride.start_longitude;
+    const endLat = latitude != null ? latitude : ride.start_latitude;
+    const endLng = longitude != null ? longitude : ride.start_longitude;
 
     const distance = calculateDistance(
       ride.start_latitude, ride.start_longitude,

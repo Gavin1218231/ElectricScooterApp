@@ -29,6 +29,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'Vim Scooter API', timestamp: new Date().toISOString() });
 });
 
+// 404 handler for unknown API routes
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
 // Serve React app in production
 const clientBuild = path.join(__dirname, '..', 'client', 'build');
 app.use(express.static(clientBuild));

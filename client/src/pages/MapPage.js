@@ -163,7 +163,7 @@ export default function MapPage() {
                   <div className="scooter-popup">
                     <h3>{scooter.code}</h3>
                     <p>{scooter.model} | {scooter.battery_level}% battery</p>
-                    <p>${scooter.unlock_fee.toFixed(2)} to unlock + ${scooter.price_per_minute.toFixed(2)}/min</p>
+                    <p>${(scooter.unlock_fee || 0).toFixed(2)} to unlock + ${(scooter.price_per_minute || 0).toFixed(2)}/min</p>
                   </div>
                 </Popup>
               </Marker>

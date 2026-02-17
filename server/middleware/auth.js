@@ -38,4 +38,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { generateToken, authenticate, requireAdmin, JWT_SECRET };
+module.exports = { generateToken, authenticate, requireAdmin };

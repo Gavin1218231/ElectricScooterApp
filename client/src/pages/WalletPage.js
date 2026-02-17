@@ -13,6 +13,7 @@ export default function WalletPage() {
   const [customAmount, setCustomAmount] = useState('');
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('success');
 
   useEffect(() => {
     fetchPayments();
@@ -40,17 +41,21 @@ export default function WalletPage() {
       const data = await api.topUp(amount);
       updateUser(data.user);
       setMessage(data.message);
+      setMessageType('success');
       setCustomAmount('');
       fetchPayments();
     } catch (err) {
       setMessage(err.message);
+      setMessageType('error');
     } finally {
       setProcessing(false);
     }
   };
 
   const formatDate = (dateStr) => {
-    const d = new Date(dateStr + 'Z');
+    if (!dateStr) return '';
+    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+    if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
     });
@@ -79,7 +84,7 @@ export default function WalletPage() {
         <h3 style={styles.sectionTitle}>Add Funds</h3>
 
         {message && (
-          <div className={message.includes('$') ? 'success-message' : 'error-message'}>
+          <div className={messageType === 'success' ? 'success-message' : 'error-message'}>
             {message}
           </div>
         )}

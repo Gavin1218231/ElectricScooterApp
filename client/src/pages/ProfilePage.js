@@ -9,6 +9,7 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState(user?.phone || '');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('success');
 
   const handleSave = async () => {
     setSaving(true);
@@ -18,8 +19,10 @@ export default function ProfilePage() {
       updateUser(data.user);
       setEditing(false);
       setMessage('Profile updated');
+      setMessageType('success');
     } catch (err) {
       setMessage(err.message);
+      setMessageType('error');
     } finally {
       setSaving(false);
     }
@@ -27,7 +30,8 @@ export default function ProfilePage() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
-    const d = new Date(dateStr + 'Z');
+    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+    if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
@@ -46,7 +50,7 @@ export default function ProfilePage() {
       </div>
 
       {message && <div style={styles.messageContainer}>
-        <div className={message.includes('updated') ? 'success-message' : 'error-message'}>
+        <div className={messageType === 'success' ? 'success-message' : 'error-message'}>
           {message}
         </div>
       </div>}

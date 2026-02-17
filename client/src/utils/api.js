@@ -29,7 +29,12 @@ class ApiClient {
       headers,
     });
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error('Server returned an invalid response');
+    }
 
     if (!response.ok) {
       throw new Error(data.error || 'Request failed');

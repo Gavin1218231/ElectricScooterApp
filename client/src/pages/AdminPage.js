@@ -75,7 +75,8 @@ export default function AdminPage() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
-    const d = new Date(dateStr + 'Z');
+    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+    if (isNaN(d.getTime())) return '-';
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
 
@@ -128,7 +129,7 @@ export default function AdminPage() {
                   <span style={styles.statLabel}>Active</span>
                 </div>
                 <div style={styles.statCard}>
-                  <span style={{ ...styles.statNumber, color: '#00D26A' }}>${dashboard.stats.totalRevenue.toFixed(2)}</span>
+                  <span style={{ ...styles.statNumber, color: '#00D26A' }}>${(dashboard.stats.totalRevenue || 0).toFixed(2)}</span>
                   <span style={styles.statLabel}>Revenue</span>
                 </div>
                 <div style={styles.statCard}>
@@ -156,7 +157,7 @@ export default function AdminPage() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={styles.listValue}>{rider.ride_count} rides</p>
-                    <p style={styles.listSubtitle}>${rider.total_spent.toFixed(2)} spent</p>
+                    <p style={styles.listSubtitle}>${(rider.total_spent || 0).toFixed(2)} spent</p>
                   </div>
                 </div>
               ))}
@@ -273,7 +274,7 @@ export default function AdminPage() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <span className={`badge ${u.role === 'admin' ? 'badge-orange' : 'badge-green'}`}>{u.role}</span>
-                    <p style={{ ...styles.listSubtitle, marginTop: '4px' }}>${u.balance.toFixed(2)}</p>
+                    <p style={{ ...styles.listSubtitle, marginTop: '4px' }}>${(u.balance || 0).toFixed(2)}</p>
                   </div>
                 </div>
               ))}
@@ -288,7 +289,7 @@ export default function AdminPage() {
                   <div>
                     <p style={styles.listTitle}>{ride.user_name} - {ride.scooter_code}</p>
                     <p style={styles.listSubtitle}>
-                      {ride.duration} min | {(ride.distance / 1000).toFixed(2)} km | ${(ride.cost + ride.unlock_fee).toFixed(2)}
+                      {ride.duration || 0} min | {((ride.distance || 0) / 1000).toFixed(2)} km | ${((ride.cost || 0) + (ride.unlock_fee || 0)).toFixed(2)}
                     </p>
                     <p style={styles.listSubtitle}>{formatDate(ride.started_at)}</p>
                   </div>

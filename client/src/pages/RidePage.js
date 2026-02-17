@@ -11,9 +11,11 @@ export default function RidePage() {
   const [rating, setRating] = useState(0);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [endError, setEndError] = useState('');
   const { updateUser } = useAuth();
   const navigate = useNavigate();
   const timerRef = useRef(null);
+  const secondsRef = useRef(0);
 
   const fetchActiveRide = useCallback(async () => {
     try {
@@ -38,31 +40,28 @@ export default function RidePage() {
   useEffect(() => {
     if (ride && ride.status === 'active') {
       timerRef.current = setInterval(() => {
-        setElapsed(prev => prev + 1);
-      }, 60000); // Update every minute
+        secondsRef.current += 1;
+        if (secondsRef.current % 60 === 0) setElapsed(e => e + 1);
+      }, 1000);
       return () => clearInterval(timerRef.current);
     }
-  }, [ride]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ride?.id, ride?.status]);
 
   const handleEndRide = async () => {
     if (!ride) return;
     setEnding(true);
+    setEndError('');
     try {
-      // Use current scooter location or ride start as end point
-      const endLat = ride.current_lat || ride.start_latitude;
-      const endLng = ride.current_lng || ride.start_longitude;
+      const endLat = ride.current_lat != null ? ride.current_lat : ride.start_latitude;
+      const endLng = ride.current_lng != null ? ride.current_lng : ride.start_longitude;
 
-      // Add some random offset to simulate movement
-      const result = await api.endRide(
-        ride.id,
-        endLat + (Math.random() - 0.5) * 0.01,
-        endLng + (Math.random() - 0.5) * 0.01
-      );
+      const result = await api.endRide(ride.id, endLat, endLng);
       setSummary(result.summary);
       if (result.user) updateUser(result.user);
       setRide({ ...ride, status: 'completed', id: ride.id });
     } catch (err) {
-      alert(err.message);
+      setEndError(err.message);
     } finally {
       setEnding(false);
     }
@@ -109,7 +108,7 @@ export default function RidePage() {
               <span>${summary.unlock_fee.toFixed(2)}</span>
             </div>
             <div style={styles.summaryRow}>
-              <span>Ride ({summary.duration} min x ${(summary.ride_cost / summary.duration).toFixed(2)})</span>
+              <span>Ride ({summary.duration} min x ${summary.duration > 0 ? (summary.ride_cost / summary.duration).toFixed(2) : '0.00'})</span>
               <span>${summary.ride_cost.toFixed(2)}</span>
             </div>
             <div style={styles.divider} />
@@ -169,7 +168,9 @@ export default function RidePage() {
   }
 
   // Active ride
-  const runningCost = (ride.unlock_fee + (elapsed * ride.per_minute_rate)).toFixed(2);
+  const fee = ride.unlock_fee || 0;
+  const rate = ride.per_minute_rate || 0;
+  const runningCost = (fee + (elapsed * rate)).toFixed(2);
 
   return (
     <div style={styles.page}>
@@ -196,7 +197,7 @@ export default function RidePage() {
           </div>
           <div style={styles.rideStatDivider} />
           <div style={styles.rideStat}>
-            <span style={styles.rideStatValue}>{ride.battery_level || '--'}%</span>
+            <span style={styles.rideStatValue}>{ride.battery_level != null ? ride.battery_level : '--'}%</span>
             <span style={styles.rideStatLabel}>BATTERY</span>
           </div>
         </div>
@@ -208,6 +209,7 @@ export default function RidePage() {
         </div>
 
         <div style={styles.rideActions}>
+          {endError && <div className="error-message" style={{ marginBottom: '12px' }}>{endError}</div>}
           <button
             onClick={handleEndRide}
             className="btn btn-danger"

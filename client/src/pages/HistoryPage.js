@@ -31,7 +31,8 @@ export default function HistoryPage() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
-    const d = new Date(dateStr + 'Z');
+    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+    if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
     });
@@ -73,12 +74,12 @@ export default function HistoryPage() {
                 </div>
                 <div style={styles.cardStat}>
                   <span style={styles.cardStatLabel}>Distance</span>
-                  <span style={styles.cardStatValue}>{(ride.distance / 1000).toFixed(2)} km</span>
+                  <span style={styles.cardStatValue}>{((ride.distance || 0) / 1000).toFixed(2)} km</span>
                 </div>
                 <div style={styles.cardStat}>
                   <span style={styles.cardStatLabel}>Cost</span>
                   <span style={{ ...styles.cardStatValue, color: '#00D26A' }}>
-                    ${(ride.cost + ride.unlock_fee).toFixed(2)}
+                    ${((ride.cost || 0) + (ride.unlock_fee || 0)).toFixed(2)}
                   </span>
                 </div>
               </div>
