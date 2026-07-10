@@ -23,11 +23,6 @@ router.post('/start', authenticate, (req, res) => {
       return res.status(400).json({ error: 'You already have an active ride', ride_id: activeRide.id });
     }
 
-    // Check user balance
-    if (req.user.balance < 1.00) {
-      return res.status(400).json({ error: 'Insufficient balance. Please top up your wallet.' });
-    }
-
     // Check scooter is available
     const scooter = db.prepare('SELECT * FROM scooters WHERE id = ?').get(scooter_id);
     if (!scooter) {
@@ -38,6 +33,11 @@ router.post('/start', authenticate, (req, res) => {
     }
     if (scooter.battery_level <= 10) {
       return res.status(400).json({ error: 'Scooter battery is too low' });
+    }
+
+    // Check user can cover this scooter's unlock fee (plus a small ride buffer)
+    if (req.user.balance < scooter.unlock_fee) {
+      return res.status(400).json({ error: 'Insufficient balance. Please top up your wallet.' });
     }
 
     const rideId = uuidv4();
@@ -224,8 +224,8 @@ router.post('/:id/end', authenticate, (req, res) => {
 router.post('/:id/rate', authenticate, (req, res) => {
   try {
     const { rating } = req.body;
-    if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be a whole number between 1 and 5' });
     }
 
     const ride = db.prepare(
@@ -234,6 +234,10 @@ router.post('/:id/rate', authenticate, (req, res) => {
 
     if (!ride) {
       return res.status(404).json({ error: 'Completed ride not found' });
+    }
+
+    if (ride.rating != null) {
+      return res.status(400).json({ error: 'Ride has already been rated' });
     }
 
     db.prepare('UPDATE rides SET rating = ? WHERE id = ?').run(rating, ride.id);
@@ -247,8 +251,12 @@ router.post('/:id/rate', authenticate, (req, res) => {
 // Get ride history
 router.get('/', authenticate, (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let page = parseInt(req.query.page, 10);
+    let limit = parseInt(req.query.limit, 10);
+    if (!Number.isFinite(page) || page < 1) page = 1;
+    if (!Number.isFinite(limit) || limit < 1) limit = 20;
+    if (limit > 100) limit = 100;
+    const offset = (page - 1) * limit;
 
     const rides = db.prepare(`
       SELECT r.*, s.code as scooter_code, s.model as scooter_model
@@ -257,11 +265,11 @@ router.get('/', authenticate, (req, res) => {
       WHERE r.user_id = ?
       ORDER BY r.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(req.user.id, parseInt(limit), offset);
+    `).all(req.user.id, limit, offset);
 
     const total = db.prepare('SELECT COUNT(*) as count FROM rides WHERE user_id = ?').get(req.user.id).count;
 
-    res.json({ rides, total, page: parseInt(page), limit: parseInt(limit) });
+    res.json({ rides, total, page, limit });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch rides' });
   }

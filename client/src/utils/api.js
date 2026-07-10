@@ -79,9 +79,9 @@ class ApiClient {
   // Scooters
   getScooters(lat, lng, radius) {
     const params = new URLSearchParams();
-    if (lat) params.set('lat', lat);
-    if (lng) params.set('lng', lng);
-    if (radius) params.set('radius', radius);
+    if (lat != null) params.set('lat', lat);
+    if (lng != null) params.set('lng', lng);
+    if (radius != null) params.set('radius', radius);
     const qs = params.toString();
     return this.request(`/scooters${qs ? '?' + qs : ''}`);
   }

@@ -70,7 +70,7 @@ export default function HistoryPage() {
               <div style={styles.cardStats}>
                 <div style={styles.cardStat}>
                   <span style={styles.cardStatLabel}>Duration</span>
-                  <span style={styles.cardStatValue}>{ride.duration} min</span>
+                  <span style={styles.cardStatValue}>{ride.duration || 0} min</span>
                 </div>
                 <div style={styles.cardStat}>
                   <span style={styles.cardStatLabel}>Distance</span>

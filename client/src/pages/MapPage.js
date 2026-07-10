@@ -74,6 +74,13 @@ export default function MapPage() {
         5000
       );
       setScooters(data.scooters);
+      // Keep the open scooter panel in sync with fresh data; close it if the
+      // scooter is no longer available (rented/removed by someone else).
+      setSelectedScooter(prev => {
+        if (!prev) return prev;
+        const updated = data.scooters.find(s => s.id === prev.id);
+        return updated || null;
+      });
     } catch (err) {
       setError('Failed to load scooters');
     } finally {
@@ -198,7 +205,7 @@ export default function MapPage() {
             </div>
             <div style={styles.stat}>
               <span style={styles.statValue}>
-                {selectedScooter.distance ? `${Math.round(selectedScooter.distance)}m` : '--'}
+                {selectedScooter.distance != null ? `${Math.round(selectedScooter.distance)}m` : '--'}
               </span>
               <span style={styles.statLabel}>Away</span>
             </div>

@@ -64,6 +64,18 @@ router.post('/scooters', authenticate, requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'Code, latitude, and longitude are required' });
     }
 
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!isFinite(lat) || lat < -90 || lat > 90 || !isFinite(lng) || lng < -180 || lng > 180) {
+      return res.status(400).json({ error: 'Invalid latitude or longitude' });
+    }
+
+    const rate = price_per_minute != null ? Number(price_per_minute) : 0.39;
+    const fee = unlock_fee != null ? Number(unlock_fee) : 1.00;
+    if (!isFinite(rate) || rate < 0 || !isFinite(fee) || fee < 0) {
+      return res.status(400).json({ error: 'Price per minute and unlock fee must be non-negative numbers' });
+    }
+
     const existing = db.prepare('SELECT id FROM scooters WHERE code = ?').get(code);
     if (existing) {
       return res.status(409).json({ error: 'Scooter code already exists' });
@@ -73,7 +85,7 @@ router.post('/scooters', authenticate, requireAdmin, (req, res) => {
     db.prepare(`
       INSERT INTO scooters (id, code, model, latitude, longitude, price_per_minute, unlock_fee)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, code, model || 'Vim S1', latitude, longitude, price_per_minute || 0.39, unlock_fee || 1.00);
+    `).run(id, code, model || 'Vim S1', lat, lng, rate, fee);
 
     const scooter = db.prepare('SELECT * FROM scooters WHERE id = ?').get(id);
     res.status(201).json({ scooter });
