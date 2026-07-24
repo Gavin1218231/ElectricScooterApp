@@ -6,6 +6,12 @@ const { calculateDistance } = require('../utils/geo');
 
 const router = express.Router();
 
+// Validate a latitude/longitude pair is within real-world bounds.
+function isValidCoord(lat, lng) {
+  return typeof lat === 'number' && isFinite(lat) && lat >= -90 && lat <= 90 &&
+         typeof lng === 'number' && isFinite(lng) && lng >= -180 && lng <= 180;
+}
+
 // Start a ride (unlock scooter)
 router.post('/start', authenticate, (req, res) => {
   try {
@@ -13,6 +19,9 @@ router.post('/start', authenticate, (req, res) => {
 
     if (!scooter_id || latitude == null || longitude == null) {
       return res.status(400).json({ error: 'Scooter ID and location are required' });
+    }
+    if (!isValidCoord(latitude, longitude)) {
+      return res.status(400).json({ error: 'Invalid latitude or longitude' });
     }
 
     // Check user doesn't have an active ride
@@ -35,9 +44,14 @@ router.post('/start', authenticate, (req, res) => {
       return res.status(400).json({ error: 'Scooter battery is too low' });
     }
 
-    // Check user can cover this scooter's unlock fee (plus a small ride buffer)
-    if (req.user.balance < scooter.unlock_fee) {
-      return res.status(400).json({ error: 'Insufficient balance. Please top up your wallet.' });
+    // Require enough balance to cover the unlock fee plus a minimum ride reserve
+    // (~15 minutes), so a ride cannot start with funds that can't cover it.
+    const MIN_RESERVE_MINUTES = 15;
+    const requiredBalance = scooter.unlock_fee + scooter.price_per_minute * MIN_RESERVE_MINUTES;
+    if (req.user.balance < requiredBalance) {
+      return res.status(400).json({
+        error: `Insufficient balance. You need at least $${requiredBalance.toFixed(2)} to start a ride. Please top up your wallet.`,
+      });
     }
 
     const rideId = uuidv4();
@@ -86,6 +100,9 @@ router.put('/:id/location', authenticate, (req, res) => {
     if (latitude == null || longitude == null) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
+    if (!isValidCoord(latitude, longitude)) {
+      return res.status(400).json({ error: 'Invalid latitude or longitude' });
+    }
 
     const ride = db.prepare(
       "SELECT * FROM rides WHERE id = ? AND user_id = ? AND status = 'active'"
@@ -133,6 +150,12 @@ router.put('/:id/location', authenticate, (req, res) => {
 router.post('/:id/end', authenticate, (req, res) => {
   try {
     const { latitude, longitude } = req.body;
+
+    // End coordinates are optional (we fall back to the start), but if provided
+    // they must be valid so a client cannot skew stored distance / battery state.
+    if ((latitude != null || longitude != null) && !isValidCoord(latitude, longitude)) {
+      return res.status(400).json({ error: 'Invalid latitude or longitude' });
+    }
 
     const ride = db.prepare(
       "SELECT * FROM rides WHERE id = ? AND user_id = ? AND status = 'active'"

@@ -13,7 +13,7 @@ function generateToken(user) {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '7d', algorithm: 'HS256' }
   );
 }
 
@@ -25,7 +25,7 @@ function authenticate(req, res, next) {
 
   try {
     const token = header.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
     const user = db.prepare('SELECT id, email, name, phone, role, balance, created_at FROM users WHERE id = ?').get(decoded.id);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });

@@ -90,7 +90,22 @@ router.post('/top-up', authenticate, (req, res) => {
       return res.status(400).json({ error: 'Amount must be between $0.01 and $100.00' });
     }
 
+    // NOTE: top-ups are simulated (no real payment processor). As a guardrail
+    // against unlimited free balance, cap the total credited per user per day.
+    // A production deployment must credit balance only on confirmed payment capture.
+    const DAILY_TOPUP_LIMIT = 200;
+
     const topUp = db.transaction(() => {
+      const todayTotal = db.prepare(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE user_id = ? AND type = 'top_up' AND created_at >= date('now')"
+      ).get(req.user.id).total;
+
+      if (todayTotal + amount > DAILY_TOPUP_LIMIT) {
+        const err = new Error(`Daily top-up limit of $${DAILY_TOPUP_LIMIT.toFixed(2)} reached`);
+        err.statusCode = 429;
+        throw err;
+      }
+
       db.prepare('UPDATE users SET balance = balance + ?, updated_at = datetime(\'now\') WHERE id = ?')
         .run(amount, req.user.id);
 
@@ -103,6 +118,9 @@ router.post('/top-up', authenticate, (req, res) => {
     const user = db.prepare('SELECT id, email, name, phone, role, balance, created_at FROM users WHERE id = ?').get(req.user.id);
     res.json({ user, message: `$${amount.toFixed(2)} added to your wallet` });
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     res.status(500).json({ error: 'Top-up failed' });
   }
 });
