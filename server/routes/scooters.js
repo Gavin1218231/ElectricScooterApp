@@ -40,13 +40,17 @@ router.get('/', authenticate, (req, res) => {
 router.get('/all', authenticate, requireAdmin, (req, res) => {
   try {
     const scooters = db.prepare('SELECT * FROM scooters ORDER BY created_at DESC').all();
+    // Counts are keyed strictly on status so the buckets are mutually exclusive
+    // and sum to total. needs_charge is reported separately as an overlay.
     const stats = {
       total: scooters.length,
       available: scooters.filter(s => s.status === 'available').length,
       in_use: scooters.filter(s => s.status === 'in_use').length,
       maintenance: scooters.filter(s => s.status === 'maintenance').length,
-      low_battery: scooters.filter(s => s.status === 'low_battery' || s.battery_level <= 10).length,
+      low_battery: scooters.filter(s => s.status === 'low_battery').length,
       disabled: scooters.filter(s => s.status === 'disabled').length,
+      reserved: scooters.filter(s => s.status === 'reserved').length,
+      needs_charge: scooters.filter(s => s.battery_level <= 10).length,
     };
     res.json({ scooters, stats });
   } catch (err) {

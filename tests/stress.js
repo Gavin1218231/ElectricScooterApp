@@ -110,7 +110,7 @@ async function testAuthConcurrency() {
   const dupePromises = Array.from({ length: 5 }, () =>
     req('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email: 'stress0@test.com', password: 'pass123', name: 'Dupe' }),
+      body: JSON.stringify({ email: 'stress0@test.com', password: 'password123', name: 'Dupe' }),
     })
   );
   const dupeResults = await Promise.all(dupePromises);
@@ -346,7 +346,11 @@ async function testInvalidInputs(tokens) {
   const attacks = [
     ['Empty body registration', () => req('/auth/register', { method: 'POST', body: '{}' })],
     ['SQL injection email', () => req('/auth/login', { method: 'POST', body: JSON.stringify({ email: "' OR 1=1 --", password: 'x' }) })],
-    ['XSS in name', () => req('/auth/register', { method: 'POST', body: JSON.stringify({ email: 'xss@test.com', password: 'pass123', name: '<script>alert(1)</script>' }) })],
+    ['XSS in name', () => req('/auth/register', { method: 'POST', body: JSON.stringify({ email: 'xss@test.com', password: 'password123', name: '<script>alert(1)</script>' }) })],
+    ['Malformed email', () => req('/auth/register', { method: 'POST', body: JSON.stringify({ email: 'not-an-email', password: 'password123', name: 'Bad Email' }) })],
+    ['Email with whitespace', () => req('/auth/register', { method: 'POST', body: JSON.stringify({ email: 'a b@c.com', password: 'password123', name: 'WS' }) })],
+    ['Short password', () => req('/auth/register', { method: 'POST', body: JSON.stringify({ email: 'shortpw@test.com', password: 'pass123', name: 'Short PW' }) })],
+    ['Oversized name', () => req('/auth/register', { method: 'POST', body: JSON.stringify({ email: 'bigname@test.com', password: 'password123', name: 'x'.repeat(300) }) })],
     ['Negative top-up', () => authReq(token, '/auth/top-up', { method: 'POST', body: JSON.stringify({ amount: -50 }) })],
     ['Zero top-up', () => authReq(token, '/auth/top-up', { method: 'POST', body: JSON.stringify({ amount: 0 }) })],
     ['Huge top-up', () => authReq(token, '/auth/top-up', { method: 'POST', body: JSON.stringify({ amount: 999999 }) })],

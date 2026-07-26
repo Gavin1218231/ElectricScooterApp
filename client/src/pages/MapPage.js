@@ -114,12 +114,13 @@ export default function MapPage() {
       const pos = userPos || DEFAULT_CENTER;
       const result = await api.startRide(scooter.id, pos[0], pos[1]);
       if (result.user) updateUser(result.user);
+      // Navigate away last; don't touch state afterwards since we unmount.
       navigate('/ride');
+      return;
     } catch (err) {
       setError(err.message);
-    } finally {
-      setStarting(false);
     }
+    setStarting(false);
   };
 
   return (

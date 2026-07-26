@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 
 export default function AdminPage() {
@@ -17,34 +17,48 @@ export default function AdminPage() {
     loadTab(tab);
   }, [tab]);
 
+  // Guards against out-of-order writes: if the admin switches tabs while a
+  // slower request is in flight, only the newest request may commit state.
+  const reqIdRef = useRef(0);
+
   const loadTab = async (t) => {
+    const reqId = ++reqIdRef.current;
+    const isStale = () => reqId !== reqIdRef.current;
     setLoading(true);
     try {
       switch (t) {
-        case 'dashboard':
+        case 'dashboard': {
           const d = await api.getDashboard();
+          if (isStale()) return;
           setDashboard(d);
           break;
-        case 'scooters':
+        }
+        case 'scooters': {
           const s = await api.getAllScooters();
-          setScooters(s.scooters);
-          setScooterStats(s.stats);
+          if (isStale()) return;
+          setScooters(s.scooters || []);
+          setScooterStats(s.stats || null);
           break;
-        case 'users':
+        }
+        case 'users': {
           const u = await api.getAdminUsers();
-          setUsers(u.users);
+          if (isStale()) return;
+          setUsers(u.users || []);
           break;
-        case 'rides':
+        }
+        case 'rides': {
           const r = await api.getAdminRides();
-          setRides(r.rides);
+          if (isStale()) return;
+          setRides(r.rides || []);
           break;
+        }
         default:
           break;
       }
     } catch (err) {
       // ignore
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   };
 
@@ -150,7 +164,7 @@ export default function AdminPage() {
 
               <h3 style={styles.subTitle}>Top Riders</h3>
               {dashboard.topRiders.map((rider, i) => (
-                <div key={i} style={styles.listItem}>
+                <div key={rider.email || i} style={styles.listItem}>
                   <div>
                     <p style={styles.listTitle}>{rider.name}</p>
                     <p style={styles.listSubtitle}>{rider.email}</p>
@@ -193,7 +207,7 @@ export default function AdminPage() {
                     <span style={styles.statLabel}>In Use</span>
                   </div>
                   <div style={styles.statCard}>
-                    <span style={{ ...styles.statNumber, color: '#EF4444' }}>{scooterStats.maintenance + scooterStats.low_battery}</span>
+                    <span style={{ ...styles.statNumber, color: '#EF4444' }}>{(scooterStats.maintenance || 0) + (scooterStats.needs_charge || 0)}</span>
                     <span style={styles.statLabel}>Needs Attn</span>
                   </div>
                 </div>

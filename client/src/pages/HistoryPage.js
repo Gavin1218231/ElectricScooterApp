@@ -11,21 +11,46 @@ const statusColors = {
 export default function HistoryPage() {
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchRides();
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.getRideHistory(1);
+        if (cancelled) return;
+        setRides(data.rides || []);
+        setTotal(data.total || 0);
+        setPage(1);
+      } catch (err) {
+        if (!cancelled) setError('Could not load your ride history.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  const fetchRides = async () => {
+  const loadMore = async () => {
+    setLoadingMore(true);
+    setError('');
     try {
-      const data = await api.getRideHistory();
-      setRides(data.rides);
-      setTotal(data.total);
+      const next = page + 1;
+      const data = await api.getRideHistory(next);
+      // De-dupe defensively: rides can shift between pages if a new one lands.
+      setRides(prev => {
+        const seen = new Set(prev.map(r => r.id));
+        return [...prev, ...(data.rides || []).filter(r => !seen.has(r.id))];
+      });
+      setTotal(data.total || 0);
+      setPage(next);
     } catch (err) {
-      // ignore
+      setError('Could not load more rides.');
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -94,6 +119,19 @@ export default function HistoryPage() {
               </div>
             </div>
           ))
+        )}
+
+        {error && <div className="error-message" style={{ marginTop: '12px' }}>{error}</div>}
+
+        {rides.length > 0 && rides.length < total && (
+          <button
+            onClick={loadMore}
+            className="btn btn-outline"
+            disabled={loadingMore}
+            style={{ marginTop: '4px' }}
+          >
+            {loadingMore ? 'Loading...' : `Load more (${total - rides.length} older)`}
+          </button>
         )}
       </div>
     </div>

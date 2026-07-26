@@ -167,7 +167,11 @@ router.post('/:id/end', authenticate, (req, res) => {
 
     const startTime = new Date(ride.started_at + 'Z').getTime();
     const endTime = Date.now();
-    const durationMinutes = Math.max(1, Math.ceil((endTime - startTime) / 60000));
+    // Cap billable time at 24h. Without a cap, a ride left open (app closed,
+    // dead phone) bills unbounded and can drive the balance deeply negative.
+    const MAX_BILLABLE_MINUTES = 24 * 60;
+    const elapsedMinutes = Math.max(1, Math.ceil((endTime - startTime) / 60000));
+    const durationMinutes = Math.min(elapsedMinutes, MAX_BILLABLE_MINUTES);
 
     const endLat = latitude != null ? latitude : ride.start_latitude;
     const endLng = longitude != null ? longitude : ride.start_longitude;

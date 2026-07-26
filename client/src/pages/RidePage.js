@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -10,22 +10,15 @@ export default function RidePage() {
   const [summary, setSummary] = useState(null);
   const [rating, setRating] = useState(0);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [endError, setEndError] = useState('');
   const { updateUser } = useAuth();
   const navigate = useNavigate();
-  const timerRef = useRef(null);
-  const secondsRef = useRef(0);
 
   const fetchActiveRide = useCallback(async () => {
     try {
       const data = await api.getActiveRide();
-      if (data.ride) {
-        setRide(data.ride);
-        setElapsed(data.ride.duration || 0);
-      } else {
-        setRide(null);
-      }
+      setRide(data.ride ? data.ride : null);
     } catch (err) {
       // No active ride
     } finally {
@@ -37,16 +30,29 @@ export default function RidePage() {
     fetchActiveRide();
   }, [fetchActiveRide]);
 
+  // Derive elapsed time from the server's started_at rather than counting our
+  // own ticks, so the timer stays accurate if the tab is throttled or the
+  // device sleeps.
   useEffect(() => {
-    if (ride && ride.status === 'active') {
-      timerRef.current = setInterval(() => {
-        secondsRef.current += 1;
-        if (secondsRef.current % 60 === 0) setElapsed(e => e + 1);
-      }, 1000);
-      return () => clearInterval(timerRef.current);
-    }
+    if (!ride || ride.status !== 'active' || !ride.started_at) return;
+    const raw = ride.started_at;
+    const startMs = new Date(raw.endsWith('Z') ? raw : raw + 'Z').getTime();
+    if (isNaN(startMs)) return;
+
+    const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ride?.id, ride?.status]);
+  }, [ride?.id, ride?.status, ride?.started_at]);
+
+  // Keep scooter battery / server-side stats fresh during a long ride.
+  useEffect(() => {
+    if (!ride || ride.status !== 'active') return;
+    const id = setInterval(fetchActiveRide, 30000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ride?.id, ride?.status, fetchActiveRide]);
 
   const handleEndRide = async () => {
     if (!ride) return;
@@ -170,7 +176,11 @@ export default function RidePage() {
   // Active ride
   const fee = ride.unlock_fee || 0;
   const rate = ride.per_minute_rate || 0;
-  const runningCost = (fee + (elapsed * rate)).toFixed(2);
+  // Mirror the server's billing: at least 1 minute, rounded up.
+  const billedMinutes = Math.max(1, Math.ceil(elapsedSeconds / 60));
+  const runningCost = (fee + billedMinutes * rate).toFixed(2);
+  const clockMinutes = Math.floor(elapsedSeconds / 60);
+  const clockSeconds = elapsedSeconds % 60;
 
   return (
     <div style={styles.page}>
@@ -187,8 +197,10 @@ export default function RidePage() {
 
         <div style={styles.rideStats}>
           <div style={styles.rideStat}>
-            <span style={styles.rideStatValue}>{elapsed}</span>
-            <span style={styles.rideStatLabel}>MIN</span>
+            <span style={styles.rideStatValue}>
+              {clockMinutes}:{String(clockSeconds).padStart(2, '0')}
+            </span>
+            <span style={styles.rideStatLabel}>ELAPSED</span>
           </div>
           <div style={styles.rideStatDivider} />
           <div style={styles.rideStat}>

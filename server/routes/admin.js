@@ -29,7 +29,8 @@ router.get('/dashboard', authenticate, requireAdmin, (req, res) => {
     `).all();
 
     const topRiders = db.prepare(`
-      SELECT u.name, u.email, COUNT(r.id) as ride_count, COALESCE(SUM(r.cost), 0) as total_spent
+      SELECT u.name, u.email, COUNT(r.id) as ride_count,
+             COALESCE(SUM(r.cost + r.unlock_fee), 0) as total_spent
       FROM users u
       LEFT JOIN rides r ON u.id = r.user_id AND r.status = 'completed'
       GROUP BY u.id
@@ -97,8 +98,19 @@ router.post('/scooters', authenticate, requireAdmin, (req, res) => {
 // Get all users (admin)
 router.get('/users', authenticate, requireAdmin, (req, res) => {
   try {
-    const users = db.prepare('SELECT id, email, name, phone, role, balance, created_at FROM users ORDER BY created_at DESC').all();
-    res.json({ users });
+    let page = parseInt(req.query.page, 10);
+    let limit = parseInt(req.query.limit, 10);
+    if (!Number.isFinite(page) || page < 1) page = 1;
+    if (!Number.isFinite(limit) || limit < 1) limit = 50;
+    if (limit > 200) limit = 200;
+    const offset = (page - 1) * limit;
+
+    const users = db.prepare(
+      'SELECT id, email, name, phone, role, balance, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).all(limit, offset);
+    const total = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+
+    res.json({ users, total, page, limit });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users' });
   }

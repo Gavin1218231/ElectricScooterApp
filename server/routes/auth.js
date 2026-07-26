@@ -11,15 +11,38 @@ router.post('/register', (req, res) => {
   try {
     const { email, password, name, phone } = req.body;
 
-    if (!email || !password || !name) {
+    if (typeof email !== 'string' || typeof password !== 'string' || typeof name !== 'string') {
       return res.status(400).json({ error: 'Email, password, and name are required' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+
+    if (!cleanEmail || !password || !cleanName) {
+      return res.status(400).json({ error: 'Email, password, and name are required' });
     }
 
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
+    // Basic RFC-ish shape check: local@domain.tld, no whitespace.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    }
+
+    if (cleanName.length > 100) {
+      return res.status(400).json({ error: 'Name must be 100 characters or fewer' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    if (password.length > 200) {
+      return res.status(400).json({ error: 'Password must be 200 characters or fewer' });
+    }
+
+    if (phone != null && (typeof phone !== 'string' || phone.trim().length > 30)) {
+      return res.status(400).json({ error: 'Invalid phone number' });
+    }
+
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
     if (existing) {
       return res.status(409).json({ error: 'Email already registered' });
     }
@@ -29,7 +52,7 @@ router.post('/register', (req, res) => {
 
     db.prepare(
       'INSERT INTO users (id, email, password, name, phone) VALUES (?, ?, ?, ?, ?)'
-    ).run(id, email.toLowerCase(), hashedPassword, name, phone || null);
+    ).run(id, cleanEmail, hashedPassword, cleanName, phone ? phone.trim() : null);
 
     const user = db.prepare('SELECT id, email, name, phone, role, balance, created_at FROM users WHERE id = ?').get(id);
     const token = generateToken(user);

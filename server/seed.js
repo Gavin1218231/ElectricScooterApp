@@ -84,17 +84,27 @@ for (let i = 0; i < 15; i++) {
   const end = randomPointInRadius(start.latitude, start.longitude, 1500);
   const duration = Math.floor(Math.random() * 30) + 3;
   const distance = Math.random() * 4000 + 200;
+  const unlockFee = 1.00;
   const cost = Math.round(duration * 0.39 * 100) / 100;
   const rating = Math.random() > 0.3 ? Math.floor(Math.random() * 2) + 4 : null;
+  // Derive ended_at from started_at + duration so history is internally
+  // consistent (previously both offsets were random and could invert).
+  const startedHoursAgo = Math.floor(Math.random() * 168) + 1;
 
   const rideId = uuidv4();
   db.prepare(`
     INSERT INTO rides (id, user_id, scooter_id, status, start_latitude, start_longitude,
-      end_latitude, end_longitude, distance, duration, cost, rating, started_at, ended_at)
-    VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-' || ? || ' hours'), datetime('now', '-' || ? || ' hours'))
+      end_latitude, end_longitude, distance, duration, cost, unlock_fee, rating, started_at, ended_at)
+    VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      datetime('now', '-' || ? || ' hours'),
+      datetime('now', '-' || ? || ' hours', '+' || ? || ' minutes'))
   `).run(rideId, userId, scooterId, start.latitude, start.longitude, end.latitude, end.longitude,
-    distance, duration, cost, rating, Math.floor(Math.random() * 168) + 1, Math.floor(Math.random() * 168));
+    distance, duration, cost, unlockFee, rating, startedHoursAgo, startedHoursAgo, duration);
 
+  // Mirror the live flow, which records the unlock fee and the ride cost as
+  // separate ride_charge rows, so revenue reporting matches real rides.
+  db.prepare('INSERT INTO payments (id, user_id, ride_id, amount, type, description) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(uuidv4(), userId, rideId, -unlockFee, 'ride_charge', 'Unlock fee');
   db.prepare('INSERT INTO payments (id, user_id, ride_id, amount, type, description) VALUES (?, ?, ?, ?, ?, ?)')
     .run(uuidv4(), userId, rideId, -cost, 'ride_charge', `Ride: ${duration} min`);
 }
