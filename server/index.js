@@ -15,9 +15,17 @@ const adminRoutes = require('./routes/admin');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Trust the reverse proxy (needed for correct client IPs behind a proxy so
-// rate limiting keys on the real client, not the proxy).
-app.set('trust proxy', 1);
+// Trust the reverse proxy ONLY when explicitly configured. Trusting
+// X-Forwarded-For unconditionally lets any client spoof its IP and reset its
+// own rate-limit counter, defeating brute-force protection. Left off, Express
+// keys on the real socket address, which cannot be forged.
+// Set TRUST_PROXY when actually deployed behind a proxy: "1" (hops to trust),
+// "loopback", or a specific proxy IP/subnet.
+const trustProxy = process.env.TRUST_PROXY;
+if (trustProxy) {
+  const hops = Number(trustProxy);
+  app.set('trust proxy', Number.isInteger(hops) && hops >= 0 ? hops : trustProxy);
+}
 
 // Security headers. CSP is left to the deployment layer because the served SPA
 // uses inline styles and loads OpenStreetMap tiles cross-origin; the remaining
