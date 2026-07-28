@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { reapAbandonedRides, completeRide } = require('../utils/rideLifecycle');
 const { calculateDistance } = require('../utils/geo');
 
 const router = express.Router();
@@ -8,6 +9,9 @@ const router = express.Router();
 // Get all available scooters (with optional location filter)
 router.get('/', authenticate, (req, res) => {
   try {
+    // Reclaim scooters stuck in_use by abandoned rides before listing.
+    reapAbandonedRides();
+
     const { lat, lng, radius = 2000 } = req.query;
     let scooters;
 
@@ -51,6 +55,12 @@ router.get('/all', authenticate, requireAdmin, (req, res) => {
       disabled: scooters.filter(s => s.status === 'disabled').length,
       reserved: scooters.filter(s => s.status === 'reserved').length,
       needs_charge: scooters.filter(s => s.battery_level <= 10).length,
+      // Disjoint "needs a human" count: each scooter counted at most once.
+      // Computed server-side so the UI can't double-count by summing buckets.
+      needs_attention: scooters.filter(s =>
+        s.status === 'maintenance' || s.status === 'disabled' ||
+        s.status === 'low_battery' || s.battery_level <= 10
+      ).length,
     };
     res.json({ scooters, stats });
   } catch (err) {
@@ -82,6 +92,42 @@ router.put('/:id', authenticate, requireAdmin, (req, res) => {
 
     if (!scooter) {
       return res.status(404).json({ error: 'Scooter not found' });
+    }
+
+    // Validate up front so bad input is a 400, not a CHECK-constraint 500.
+    const VALID_STATUSES = ['available', 'in_use', 'reserved', 'maintenance', 'low_battery', 'disabled'];
+    if (status != null && !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Status must be one of: ${VALID_STATUSES.join(', ')}` });
+    }
+    if (battery_level != null &&
+        (!Number.isInteger(battery_level) || battery_level < 0 || battery_level > 100)) {
+      return res.status(400).json({ error: 'Battery level must be a whole number between 0 and 100' });
+    }
+    if (latitude != null && (typeof latitude !== 'number' || !isFinite(latitude) || latitude < -90 || latitude > 90)) {
+      return res.status(400).json({ error: 'Invalid latitude' });
+    }
+    if (longitude != null && (typeof longitude !== 'number' || !isFinite(longitude) || longitude < -180 || longitude > 180)) {
+      return res.status(400).json({ error: 'Invalid longitude' });
+    }
+
+    // Don't let a status change out of in_use strand an active ride. Releasing
+    // the scooter while someone is riding it allows a second rider to unlock
+    // the same scooter, producing two active rides that both bill and fight
+    // over its position. Force-end the ride instead of silently freeing it.
+    if (status != null && status !== 'in_use' && scooter.status === 'in_use') {
+      const activeRide = db.prepare(
+        "SELECT * FROM rides WHERE scooter_id = ? AND status = 'active'"
+      ).get(req.params.id);
+
+      if (activeRide) {
+        if (req.query.force_end !== 'true') {
+          return res.status(409).json({
+            error: 'Scooter has an active ride. Retry with ?force_end=true to end the ride and change status.',
+            ride_id: activeRide.id,
+          });
+        }
+        completeRide(activeRide, { reason: 'ended by admin' });
+      }
     }
 
     db.prepare(`

@@ -94,8 +94,9 @@ class ApiClient {
     return this.request('/scooters/all');
   }
 
-  updateScooter(id, data) {
-    return this.request(`/scooters/${id}`, {
+  // forceEnd=true also terminates an in-progress ride on this scooter.
+  updateScooter(id, data, forceEnd = false) {
+    return this.request(`/scooters/${id}${forceEnd ? '?force_end=true' : ''}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });

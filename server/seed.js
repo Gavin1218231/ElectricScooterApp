@@ -25,6 +25,9 @@ db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `).run(adminId, 'admin@vim.rides', bcrypt.hashSync('admin123', 10), 'Vim Admin', '+1-555-0100', 'admin', 1000.00);
 
+db.prepare('INSERT INTO payments (id, user_id, amount, type, description) VALUES (?, ?, ?, ?, ?)')
+  .run(uuidv4(), adminId, 1000.00, 'top_up', 'Initial account funding');
+
 // Create demo users
 const users = [
   { email: 'rider@vim.rides', name: 'Alex Rider', phone: '+1-555-0101' },
@@ -38,7 +41,10 @@ for (const user of users) {
   db.prepare(`
     INSERT INTO users (id, email, password, name, phone, balance)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, user.email, bcrypt.hashSync('password123', 10), user.name, user.phone, 25.00);
+  `).run(id, user.email, bcrypt.hashSync('password123', 10), user.name, user.phone, 100.00);
+
+  db.prepare('INSERT INTO payments (id, user_id, amount, type, description) VALUES (?, ?, ?, ?, ?)')
+    .run(uuidv4(), id, 100.00, 'top_up', 'Initial account funding');
 }
 
 // Create scooters scattered across Southwest Florida cities
@@ -108,6 +114,15 @@ for (let i = 0; i < 15; i++) {
   db.prepare('INSERT INTO payments (id, user_id, ride_id, amount, type, description) VALUES (?, ?, ?, ?, ?, ?)')
     .run(uuidv4(), userId, rideId, -cost, 'ride_charge', `Ride: ${duration} min`);
 }
+
+// Derive every balance from the payment ledger. Previously seeded rides wrote
+// ride_charge rows without debiting the user, so the wallet showed a balance
+// that was arithmetically impossible given its own transaction list.
+db.prepare(`
+  UPDATE users SET balance = (
+    SELECT ROUND(COALESCE(SUM(amount), 0), 2) FROM payments WHERE payments.user_id = users.id
+  )
+`).run();
 
 // Create riding zones across Southwest Florida
 const zones = [

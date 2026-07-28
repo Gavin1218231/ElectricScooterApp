@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
+import { formatServerDate } from '../utils/date';
 
 export default function AdminPage() {
   const [tab, setTab] = useState('dashboard');
@@ -83,16 +84,29 @@ export default function AdminPage() {
       setEditingScooter(null);
       loadTab('scooters');
     } catch (err) {
+      // The server refuses to release a scooter with a ride in progress, since
+      // that would let a second rider unlock it. Offer to end the ride first.
+      if (/active ride/i.test(err.message)) {
+        if (window.confirm('This scooter has a ride in progress. End that ride and change its status?')) {
+          try {
+            await api.updateScooter(id, updates, true);
+            setEditingScooter(null);
+            loadTab('scooters');
+          } catch (retryErr) {
+            alert(retryErr.message);
+          }
+        }
+        return;
+      }
       alert(err.message);
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
-    if (isNaN(d.getTime())) return '-';
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  };
+  const formatDate = (dateStr) => formatServerDate(
+    dateStr,
+    { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+    '-'
+  );
 
   const statusBadge = (status) => {
     const map = { available: 'badge-green', in_use: 'badge-blue', maintenance: 'badge-orange', low_battery: 'badge-red', disabled: 'badge-gray', active: 'badge-blue', completed: 'badge-green' };
@@ -207,7 +221,7 @@ export default function AdminPage() {
                     <span style={styles.statLabel}>In Use</span>
                   </div>
                   <div style={styles.statCard}>
-                    <span style={{ ...styles.statNumber, color: '#EF4444' }}>{(scooterStats.maintenance || 0) + (scooterStats.needs_charge || 0)}</span>
+                    <span style={{ ...styles.statNumber, color: '#EF4444' }}>{scooterStats.needs_attention || 0}</span>
                     <span style={styles.statLabel}>Needs Attn</span>
                   </div>
                 </div>

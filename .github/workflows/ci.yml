@@ -101,6 +101,19 @@ jobs:
 
           kill $SERVER_PID 2>/dev/null || true
 
+      - name: Verify production config guards
+        run: |
+          # The production branch must refuse to boot without a JWT secret.
+          if NODE_ENV=production node -e "require('./server/middleware/auth')" 2>/dev/null; then
+            echo "FAIL: server started in production without JWT_SECRET"
+            exit 1
+          fi
+          echo "Production JWT_SECRET guard enforced"
+
+          # With a secret supplied, production config must load cleanly.
+          NODE_ENV=production JWT_SECRET=ci-test-secret CORS_ORIGIN=https://example.com \
+            node -e "require('./server/middleware/auth'); console.log('Production config loads OK')"
+
       - name: Run stress / concurrency test suite
         run: |
           npm run seed

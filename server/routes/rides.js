@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database');
 const { authenticate } = require('../middleware/auth');
 const { calculateDistance } = require('../utils/geo');
+const { completeRide, reapAbandonedRides } = require('../utils/rideLifecycle');
 
 const router = express.Router();
 
@@ -165,73 +166,7 @@ router.post('/:id/end', authenticate, (req, res) => {
       return res.status(404).json({ error: 'Active ride not found' });
     }
 
-    const startTime = new Date(ride.started_at + 'Z').getTime();
-    const endTime = Date.now();
-    // Cap billable time at 24h. Without a cap, a ride left open (app closed,
-    // dead phone) bills unbounded and can drive the balance deeply negative.
-    const MAX_BILLABLE_MINUTES = 24 * 60;
-    const elapsedMinutes = Math.max(1, Math.ceil((endTime - startTime) / 60000));
-    const durationMinutes = Math.min(elapsedMinutes, MAX_BILLABLE_MINUTES);
-
-    const endLat = latitude != null ? latitude : ride.start_latitude;
-    const endLng = longitude != null ? longitude : ride.start_longitude;
-
-    const distance = calculateDistance(
-      ride.start_latitude, ride.start_longitude,
-      endLat, endLng
-    );
-
-    const rideCost = durationMinutes * ride.per_minute_rate;
-    const totalCost = Math.round(rideCost * 100) / 100;
-
-    const endRide = db.transaction(() => {
-      // Complete the ride
-      db.prepare(`
-        UPDATE rides SET
-          status = 'completed',
-          end_latitude = ?,
-          end_longitude = ?,
-          distance = ?,
-          duration = ?,
-          cost = ?,
-          ended_at = datetime('now')
-        WHERE id = ?
-      `).run(endLat, endLng, distance, durationMinutes, totalCost, ride.id);
-
-      // Park the scooter
-      const scooter = db.prepare('SELECT * FROM scooters WHERE id = ?').get(ride.scooter_id);
-      const newBattery = Math.max(0, scooter.battery_level - Math.floor(distance / 500));
-      // Preserve an admin-set hold (maintenance/disabled) applied mid-ride —
-      // otherwise ending the ride silently returns a flagged scooter to the
-      // fleet. Only a scooter still marked in_use gets released.
-      const adminHeld = scooter.status === 'maintenance' || scooter.status === 'disabled';
-      const newStatus = adminHeld
-        ? scooter.status
-        : (newBattery <= 10 ? 'low_battery' : 'available');
-
-      db.prepare(`
-        UPDATE scooters SET
-          status = ?,
-          latitude = ?,
-          longitude = ?,
-          battery_level = ?,
-          total_rides = total_rides + 1,
-          total_distance = total_distance + ?,
-          updated_at = datetime('now')
-        WHERE id = ?
-      `).run(newStatus, endLat, endLng, newBattery, distance, ride.scooter_id);
-
-      // Charge the user
-      db.prepare("UPDATE users SET balance = balance - ?, updated_at = datetime('now') WHERE id = ?")
-        .run(totalCost, req.user.id);
-
-      // Record payment
-      db.prepare('INSERT INTO payments (id, user_id, ride_id, amount, type, description) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(uuidv4(), req.user.id, ride.id, -totalCost, 'ride_charge',
-          `Ride charge: ${durationMinutes} min, ${(distance / 1000).toFixed(2)} km`);
-    });
-
-    endRide();
+    const summary = completeRide(ride, { latitude, longitude });
 
     const completedRide = db.prepare('SELECT * FROM rides WHERE id = ?').get(ride.id);
     const updatedUser = db.prepare('SELECT id, email, name, phone, role, balance FROM users WHERE id = ?').get(req.user.id);
@@ -239,13 +174,7 @@ router.post('/:id/end', authenticate, (req, res) => {
     res.json({
       ride: completedRide,
       user: updatedUser,
-      summary: {
-        duration: durationMinutes,
-        distance: Math.round(distance),
-        unlock_fee: ride.unlock_fee,
-        ride_cost: totalCost,
-        total_charged: Math.round((ride.unlock_fee + totalCost) * 100) / 100,
-      },
+      summary,
       message: 'Ride completed! Scooter locked.'
     });
   } catch (err) {
@@ -311,6 +240,11 @@ router.get('/', authenticate, (req, res) => {
 // Get current active ride
 router.get('/active', authenticate, (req, res) => {
   try {
+    // Lazy sweep: force-end rides past the billable cap so an abandoned
+    // ride can't strand its scooter or escape billing. Cheap and avoids
+    // needing a cron in this single-process deployment.
+    reapAbandonedRides();
+
     const ride = db.prepare(`
       SELECT r.*, s.code as scooter_code, s.model as scooter_model,
              s.battery_level, s.latitude as current_lat, s.longitude as current_lng

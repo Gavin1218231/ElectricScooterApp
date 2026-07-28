@@ -168,9 +168,16 @@ async function testRideLifecycle(tokens) {
     startResults.filter(r => !r.ok).forEach(r => console.log(`    Error: ${r.data?.error}`));
   }
 
-  // Location updates burst
-  const rideIds = startSuccess.map(r => r.data.ride.id);
-  const rideTokens = startSuccess.map((_, i) => tokens[i]);
+  // Location updates burst.
+  // Pair each ride with the token that actually started it. Indexing tokens by
+  // position in `startSuccess` silently misaligns them if any start failed,
+  // sending later calls with the wrong user's token and reporting a cascade of
+  // 404s as location/end failures.
+  const started = startResults
+    .map((r, i) => ({ r, token: tokens[i] }))
+    .filter(({ r }) => r.ok && r.data && r.data.ride);
+  const rideIds = started.map(({ r }) => r.data.ride.id);
+  const rideTokens = started.map(({ token }) => token);
   console.log(`  Sending 5 location updates per ride (${rideIds.length * 5} total)...`);
 
   const locPromises = [];

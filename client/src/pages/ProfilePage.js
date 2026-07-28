@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import { formatServerDate } from '../utils/date';
 
 export default function ProfilePage() {
   const { user, updateUser, logout } = useAuth();
@@ -28,12 +29,8 @@ export default function ProfilePage() {
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  };
+  const formatDate = (dateStr) =>
+    formatServerDate(dateStr, { year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
     <div style={styles.page}>

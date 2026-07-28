@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
+import { formatServerDate } from '../utils/date';
 
 const statusColors = {
   completed: 'badge-green',
@@ -54,14 +55,9 @@ export default function HistoryPage() {
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-    });
-  };
+  const formatDate = (dateStr) => formatServerDate(dateStr, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+  });
 
   if (loading) {
     return <div style={styles.page}><div className="spinner" style={{ marginTop: '40vh' }} /></div>;

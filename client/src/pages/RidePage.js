@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { parseServerTime } from '../utils/date';
 import { useAuth } from '../context/AuthContext';
 
 export default function RidePage() {
@@ -12,6 +13,7 @@ export default function RidePage() {
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [endError, setEndError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const { updateUser } = useAuth();
   const navigate = useNavigate();
 
@@ -19,8 +21,11 @@ export default function RidePage() {
     try {
       const data = await api.getActiveRide();
       setRide(data.ride ? data.ride : null);
+      setLoadError('');
     } catch (err) {
-      // No active ride
+      // Never render a failed lookup as "no active ride" — a ride could be
+      // live and billing right now. Surface it and offer a retry instead.
+      setLoadError('Could not check for an active ride.');
     } finally {
       setLoading(false);
     }
@@ -35,9 +40,8 @@ export default function RidePage() {
   // device sleeps.
   useEffect(() => {
     if (!ride || ride.status !== 'active' || !ride.started_at) return;
-    const raw = ride.started_at;
-    const startMs = new Date(raw.endsWith('Z') ? raw : raw + 'Z').getTime();
-    if (isNaN(startMs)) return;
+    const startMs = parseServerTime(ride.started_at);
+    if (startMs == null) return;
 
     const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
     tick();
@@ -73,13 +77,18 @@ export default function RidePage() {
     }
   };
 
+  const [ratingError, setRatingError] = useState('');
+
   const handleRate = async (stars) => {
-    setRating(stars);
+    setRatingError('');
     try {
       await api.rateRide(ride.id, stars);
+      // Only light the stars once the write actually succeeded, so a failure
+      // doesn't leave the UI claiming a rating that was never saved.
+      setRating(stars);
       setRatingSubmitted(true);
     } catch (err) {
-      // Ignore rating errors
+      setRatingError(err.message || 'Could not save your rating.');
     }
   };
 
@@ -145,10 +154,35 @@ export default function RidePage() {
                 </button>
               ))}
             </div>
+            {ratingError && (
+              <div className="error-message" style={{ marginTop: '10px' }}>{ratingError}</div>
+            )}
           </div>
 
           <button onClick={() => navigate('/')} className="btn btn-primary" style={{ marginTop: '24px' }}>
             Find Another Scooter
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Lookup failed — distinct from "no ride", because a ride may be running.
+  if (!ride && loadError) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.emptyState}>
+          <div style={styles.emptyIcon}>!</div>
+          <h2 style={styles.emptyTitle}>Couldn't Load Your Ride</h2>
+          <p style={styles.emptyText}>
+            {loadError} If a ride is in progress it is still running — retry before starting a new one.
+          </p>
+          <button
+            onClick={() => { setLoading(true); fetchActiveRide(); }}
+            className="btn btn-primary"
+            style={{ marginTop: '24px' }}
+          >
+            Retry
           </button>
         </div>
       </div>

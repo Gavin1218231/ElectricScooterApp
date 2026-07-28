@@ -87,6 +87,22 @@ app.all('/api/*', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
+// JSON error handler for API routes. Without this, a malformed body or an
+// oversized payload returns Express's default HTML error page, which the client
+// reports to the user as the misleading "Server returned an invalid response".
+app.use('/api', (err, req, res, next) => {
+  if (res.headersSent) return next(err);
+
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body is too large' });
+  }
+  if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    return res.status(400).json({ error: 'Request body is not valid JSON' });
+  }
+  console.error('Unhandled API error:', err.message);
+  return res.status(500).json({ error: 'Internal server error' });
+});
+
 // Serve React app in production
 const clientBuild = path.join(__dirname, '..', 'client', 'build');
 app.use(express.static(clientBuild));

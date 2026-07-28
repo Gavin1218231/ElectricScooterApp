@@ -95,8 +95,50 @@ router.get('/me', authenticate, (req, res) => {
 router.put('/me', authenticate, (req, res) => {
   try {
     const { name, phone } = req.body;
-    db.prepare('UPDATE users SET name = COALESCE(?, name), phone = COALESCE(?, phone), updated_at = datetime(\'now\') WHERE id = ?')
-      .run(name || null, phone || null, req.user.id);
+
+    // Distinguish "absent" (leave unchanged) from "empty string" (clear it).
+    // Using `phone || null` with COALESCE made clearing a phone impossible:
+    // '' became null, which COALESCE read as "keep the old value".
+    const nameProvided = Object.prototype.hasOwnProperty.call(req.body, 'name');
+    const phoneProvided = Object.prototype.hasOwnProperty.call(req.body, 'phone');
+
+    let nextName;
+    if (nameProvided) {
+      if (typeof name !== 'string') {
+        return res.status(400).json({ error: 'Name must be text' });
+      }
+      nextName = name.trim();
+      if (!nextName) {
+        return res.status(400).json({ error: 'Name cannot be empty' });
+      }
+      if (nextName.length > 100) {
+        return res.status(400).json({ error: 'Name must be 100 characters or fewer' });
+      }
+    }
+
+    let nextPhone;
+    if (phoneProvided) {
+      if (phone !== null && typeof phone !== 'string') {
+        return res.status(400).json({ error: 'Phone must be text' });
+      }
+      nextPhone = phone === null ? null : phone.trim();
+      if (nextPhone && nextPhone.length > 30) {
+        return res.status(400).json({ error: 'Phone must be 30 characters or fewer' });
+      }
+      if (nextPhone === '') nextPhone = null;
+    }
+
+    db.prepare(`
+      UPDATE users SET
+        name = CASE WHEN ? THEN ? ELSE name END,
+        phone = CASE WHEN ? THEN ? ELSE phone END,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      nameProvided ? 1 : 0, nameProvided ? nextName : null,
+      phoneProvided ? 1 : 0, phoneProvided ? nextPhone : null,
+      req.user.id
+    );
 
     const user = db.prepare('SELECT id, email, name, phone, role, balance, created_at FROM users WHERE id = ?').get(req.user.id);
     res.json({ user });
@@ -111,6 +153,11 @@ router.post('/top-up', authenticate, (req, res) => {
     const { amount } = req.body;
     if (typeof amount !== 'number' || !isFinite(amount) || amount <= 0 || amount > 100) {
       return res.status(400).json({ error: 'Amount must be between $0.01 and $100.00' });
+    }
+    // Reject sub-cent precision: crediting 10.555 while the ledger records
+    // "$10.56" permanently desyncs the balance from the transaction history.
+    if (Math.round(amount * 100) !== Number((amount * 100).toFixed(6))) {
+      return res.status(400).json({ error: 'Amount cannot include fractions of a cent' });
     }
 
     // NOTE: top-ups are simulated (no real payment processor). As a guardrail
