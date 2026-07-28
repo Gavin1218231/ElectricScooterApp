@@ -201,7 +201,13 @@ router.post('/:id/end', authenticate, (req, res) => {
       // Park the scooter
       const scooter = db.prepare('SELECT * FROM scooters WHERE id = ?').get(ride.scooter_id);
       const newBattery = Math.max(0, scooter.battery_level - Math.floor(distance / 500));
-      const newStatus = newBattery <= 10 ? 'low_battery' : 'available';
+      // Preserve an admin-set hold (maintenance/disabled) applied mid-ride —
+      // otherwise ending the ride silently returns a flagged scooter to the
+      // fleet. Only a scooter still marked in_use gets released.
+      const adminHeld = scooter.status === 'maintenance' || scooter.status === 'disabled';
+      const newStatus = adminHeld
+        ? scooter.status
+        : (newBattery <= 10 ? 'low_battery' : 'available');
 
       db.prepare(`
         UPDATE scooters SET
@@ -290,7 +296,7 @@ router.get('/', authenticate, (req, res) => {
       FROM rides r
       JOIN scooters s ON r.scooter_id = s.id
       WHERE r.user_id = ?
-      ORDER BY r.created_at DESC
+      ORDER BY r.started_at DESC, r.id
       LIMIT ? OFFSET ?
     `).all(req.user.id, limit, offset);
 

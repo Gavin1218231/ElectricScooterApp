@@ -24,7 +24,7 @@ router.get('/dashboard', authenticate, requireAdmin, (req, res) => {
       FROM rides r
       JOIN users u ON r.user_id = u.id
       JOIN scooters s ON r.scooter_id = s.id
-      ORDER BY r.created_at DESC
+      ORDER BY r.started_at DESC, r.id
       LIMIT 10
     `).all();
 
@@ -124,7 +124,7 @@ router.get('/rides', authenticate, requireAdmin, (req, res) => {
       FROM rides r
       JOIN users u ON r.user_id = u.id
       JOIN scooters s ON r.scooter_id = s.id
-      ORDER BY r.created_at DESC
+      ORDER BY r.started_at DESC, r.id
       LIMIT 100
     `).all();
     res.json({ rides });

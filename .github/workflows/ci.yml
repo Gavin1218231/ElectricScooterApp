@@ -101,6 +101,18 @@ jobs:
 
           kill $SERVER_PID 2>/dev/null || true
 
+      - name: Run stress / concurrency test suite
+        run: |
+          npm run seed
+          # Rate limiting is disabled here: the suite intentionally fires
+          # hundreds of concurrent requests from a single IP, which the
+          # production limiter is designed to reject.
+          DISABLE_RATE_LIMIT=true PORT=3101 node server/index.js &
+          SERVER_PID=$!
+          sleep 3
+          BASE_URL=http://localhost:3101 node tests/stress.js
+          kill $SERVER_PID 2>/dev/null || true
+
   client-build:
     name: Client - Build
     runs-on: ubuntu-latest
